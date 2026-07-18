@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Amazon Premium Mobile Architecture</title>
+  <style>
+    :root {
+      --amazon-dark: #131921;
+      --amazon-light: #232f3e;
+      --amazon-yellow: #febd69;
+      --amazon-orange: #f08804;
+      --bg-light: #eaeded;
+      --card-bg: #ffffff;
+      --text-main: #0f1111;
+      --text-muted: #565959;
+      --prime-blue: #00a8e1;
+      --border-color: #d5d9d9;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0; padding: 0;
+      font-family: "Amazon Ember", -apple-system, BlinkMacSystemFont, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg-light);
+      color: var(--text-main);
+      min-height: 100vh;
+      padding-top: 105px;
+      padding-bottom: 70px;
+    }
+
+    /* --- GLOBAL APP CORNERSTONE HEADER --- */
+    header {
+      position: fixed; top: 0; left: 0; right: 0;
+      background: var(--amazon-dark); z-index: 500;
+      display: flex; flex-direction: column;
+    }
+    .header-top-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px 4px; }
+    .amazon-logo { font-size: 20px; font-weight: 900; color: white; text-decoration: none; }
+    .amazon-logo span { color: var(--amazon-orange); }
+    .search-container { padding: 6px 12px 10px; position: relative; }
+    .search-input-wrapper { display: flex; background: white; border-radius: 8px; overflow: hidden; }
+    .search-bar { flex: 1; border: none; padding: 12px; font-size: 15px; outline: none; }
+    .search-btn { background: var(--amazon-yellow); border: none; width: 50px; font-size: 18px; }
+    .delivery-location-bar { background: var(--amazon-light); color: white; padding: 8px 14px; font-size: 13px; }
+
+    /* Search Autocomplete Suggestions Matrix */
+    .search-suggestions {
+      position: absolute; top: 52px; left: 12px; right: 12px;
+      background: white; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+      max-height: 250px; overflow-y: auto; display: none; z-index: 600;
+      border: 1px solid var(--border-color);
+    }
+    .suggestion-item { padding: 12px 16px; font-size: 14px; border-bottom: 1px solid #f3f3f3; cursor: pointer; color: var(--text-main); }
+    .suggestion-item:last-child { border-bottom: none; }
+
+    /* --- STORE FRONT CATALOG --- */
+    .storefront-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
+    .amazon-card { background: var(--card-bg); border-radius: 4px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; border: 1px solid rgba(0,0,0,0.05); }
+    .product-image-frame { height: 130px; display: flex; align-items: center; justify-content: center; font-size: 50px; background: #f7f8f8; border-radius: 4px; margin-bottom: 10px; }
+    .product-title { font-size: 13px; font-weight: 500; line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .rating-row { display: flex; align-items: center; gap: 4px; margin: 4px 0; }
+    .stars { color: #ffa41c; font-size: 12px; }
+    .review-count { color: #007185; font-size: 11px; }
+    .prime-tag { color: var(--prime-blue); font-weight: 800; font-style: italic; font-size: 11px; }
+
+    /* --- DRAWER HOOK SLIDERS BAR --- */
+    .sliding-panel { position: fixed; top: 0; right: -100%; width: 100%; height: 100vh; background: var(--bg-light); z-index: 1000; display: flex; flex-direction: column; transition: right 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .sliding-panel.open { right: 0; }
+    .panel-header { background: var(--amazon-dark); color: white; padding: 16px; display: flex; justify-content: space-between; align-items: center; }
+    .panel-scroll { flex: 1; overflow-y: auto; padding: 14px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* App Global Bottom Fixed Sheet Systems */
+    .sheet-overlay { position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 900; display: none; }
+    .sheet-overlay.show { display: block; }
+    .bottom-sheet { position: fixed; bottom: -100%; left: 0; right: 0; background: white; border-top-left-radius: 16px; border-top-right-radius: 16px; max-height: 85vh; z-index: 950; display: flex; flex-direction: column; transition: bottom 0.3s cubic-bezier(0.4, 0, 0.2, 1); }
+    .bottom-sheet.open { bottom: 0; }
+
+    /* --- CAROUSEL & OPTION SELECTORS --- */
+    .carousel-container { display: flex; flex-direction: column; align-items: center; gap: 10px; margin: 10px 0; }
+    .main-carousel-view { font-size: 70px; width: 130px; height: 130px; display: flex; align-items: center; justify-content: center; background: #f7f8f8; border-radius: 8px; }
+    .carousel-thumbnails { display: flex; gap: 6px; }
+    .thumbnail-btn { border: 2px solid var(--border-color); background: #f7f8f8; border-radius: 4px; width: 40px; height: 40px; font-size: 18px; }
+    .thumbnail-btn.active { border-color: var(--amazon-orange); }
+    .variant-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 6px; }
+    .variant-pill { border: 1px solid var(--border-color); padding: 8px 12px; border-radius: 6px; font-size: 12px; background: white; }
+    .variant-pill.active { border-color: var(--amazon-orange); background: #fdf6ee; font-weight: 700; }
+
+    /* --- CART ITEMS & SAVE FOR LATER LAYOUT --- */
+    .cart-item-card { background: white; border-radius: 8px; padding: 14px; border: 1px solid var(--border-color); }
+    .cart-flex { display: flex; gap: 12px; }
+    .action-links { display: flex; gap: 16px; margin-top: 12px; }
+    .action-links button { color: #007185; font-size: 13px; background: none; border: none; font-weight: 500; cursor: pointer; }
+    .save-later-section { margin-top: 20px; border-top: 2px dashed var(--border-color); padding-top: 15px; }
+
+    /* --- MULTI-STEP CHECKOUT FUNNEL --- */
+    .checkout-step-container { display: none; }
+    .checkout-step-container.active { display: block; }
+    .step-indicator { display: flex; justify-content: space-between; margin-bottom: 20px; font-size: 12px; color: var(--text-muted); font-weight: bold; }
+    .step-indicator .active { color: var(--amazon-orange); }
+    .form-group { margin-bottom: 14px; }
+    .form-group label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 4px; }
+    .form-group input { width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; font-size: 14px; }
+    .radio-card { border: 1px solid var(--border-color); padding: 12px; border-radius: 6px; margin-bottom: 10px; display: flex; align-items: center; gap: 10px; }
+    .radio-card.selected { border-color: var(--amazon-orange); background: #fdf6ee; }
+
+    /* --- FIXED BUTTON SYSTEMS --- */
+    .btn-yellow { background: linear-gradient(to bottom, #fff3cd, #fcd200); border: 1px solid #a88734; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 600; width: 100%; cursor: pointer; text-align: center; }
+    .qty-stepper { display: inline-flex; border: 1px solid var(--border-color); border-radius: 6px; overflow: hidden; }
+    .qty-btn { background: #f0f2f2; border: none; width: 35px; height: 35px; font-size: 16px; font-weight: bold; }
+    .qty-value { width: 40px; display: flex; align-items: center; justify-content: center; font-weight: bold; background: white; font-size: 13px; }
+
+    /* Persistent Base Menu Sticky Footer */
+    .mobile-bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background: white; border-top: 1px solid var(--border-color); display: flex; justify-content: space-around; align-items: center; z-index: 500; }
+    .tab-item { display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 11px; width: 25%; height: 100%; cursor: pointer; position: relative; }
+    .tab-cart-badge { position: absolute; top: 6px; right: 28px; background: var(--amazon-orange); color: white; font-size: 11px; font-weight: 700; border-radius: 50%; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; }
+    .amazon-toast { position: fixed; top: 120px; left: 50%; transform: translateX(-50%); background: rgba(19, 25, 33, 0.95); color: white; padding: 12px 24px; border-radius: 30px; font-size: 13px; font-weight: 600; z-index: 2000; opacity: 0; transition: opacity 0.3s; pointer-events: none; }
+    .amazon-toast.visible { opacity: 1; }
+  </style>
+</head>
+<body>
+
+  <!-- App Header Base Frame -->
+  <header>
+    <div class="header-top-row">
+      <a href="#" class="amazon-logo" onclick="closeAllPanels()">amazon<span>.clone</span></a>
+    </div>
+    <div class="search-container">
+      <div class="search-input-wrapper">
+        <input type="text" class="search-bar" id="productSearch" oninput="handleSearchSearchSuggestions()" placeholder="Search Amazon">
+        <button class="search-btn">🔍</button>
+      </div>
+      <div class="search-suggestions" id="suggestionsBox"></div>
+    </div>
+    <div class="delivery-location-bar">📍 Deliver to Your Location</div>
+  </header>
+
+  <!-- Store Feed Grid -->
+  <main class="storefront-grid" id="catalogView"></main>
+
+  <!-- Bottom App Tab Bar -->
+  <nav class="mobile-bottom-bar">
+    <div class="tab-item" onclick="closeAllPanels()"><div>🏠</div><div>Home</div></div>
+    <div class="tab-item" onclick="alert('Account Profiles Hub')"><div>👤</div><div>You</div></div>
+    <div class="tab-item" onclick="openCartPanel()"><div>🛒</div><div>Cart</div><div class="tab-cart-badge" id="bottomCartCount">0</div></div>
+    <div class="tab-item" onclick="alert('Extended Directory Index')"><div>☰</div><div>Menu</div></div>
+  </nav>
+
+  <!-- BACKGROUND CLOSURE BLANKET SHEET -->
+  <div class="sheet-overlay" id="globalOverlay" onclick="dismissBottomSheet()"></div>
+
+  <!-- INTERACTIVE SPECIFICATION SHEET (Item Detail View) -->
+  <div class="bottom-sheet" id="productDetailSheet">
+    <div class="panel-header" style="border-radius:16px 16px 0 0;">
+      <h3>Product Details</h3>
+      <button style="background:none; border:none; color:white; font-size:20px;" onclick="dismissBottomSheet()">✕</button>
+    </div>
+    <div class="panel-scroll" id="sheetDetailBody" style="background: white;"></div>
+  </div>
+
+  <!-- PERSISTENT REPOSITORY CART DRAWER LAYER -->
+  <div class="sliding-panel" id="cartSlidingPanel">
+    <div class="panel-header">
+      <h2>Shopping Cart</h2>
+      <button style="background:none; border:none; color:white; font-size:24px;" onclick="closeCartPanel()">✕</button>
+    </div>
+    <div class="panel-scroll">
+      <div id="cartItemsContainer"></div>
+      
+      <!-- Save for Later Secondary Shelf Component -->
+      <div class="save-later-section">
+        <h3 style="font-size:15px; font-weight:700; margin-bottom:10px;">Saved for Later</h3>
+        <div id="savedItemsContainer" style="display:flex; flex-direction:column; gap:10px;"></div>
+      </div>
+    </div>
+    <div class="cart-summary-card" style="background: white; padding: 16px; border-top: 1px solid var(--border-color);">
+      <div style="display:flex; justify-content:space-between; font-size:16px; margin-bottom:10px;">
+        <span>Subtotal (<span id="summaryCountItems">0</span> items):</span>
+        <span style="font-weight:700; color:#b12704;" id="summaryTotalCost">$0.00</span>
+      </div>
+      <button class="btn-yellow" id="checkoutBtnMain" onclick="launchCheckoutFunnel()">Proceed to Checkout</button>
+    </div>
+  </div>
+
+  <!-- NATIVE MULTI-STEP CHECKOUT FULLSCREEN PANEL CONTAINER -->
+  <div class="sliding-panel" id="checkoutSystemPanel" style="z-index: 1600;">
+    <div class="panel-header">
+      <h2>Secure Checkout</h2>
+      <button style="background:none; border:none; color:white; font-size:24px;" onclick="closeCheckoutFunnel()">✕</button>
+    </div>
+    <div class="panel-scroll" style="background: white;">
+      
+      <div class="step-indicator">
+        <span id="indStep1" class="active">1. Shipping</span>
+        <span id="indStep2">2. Delivery Method</span>
+        <span id="indStep3">3. Place Order</span>
+      </div>
+
+      <!-- STEP 1: Shipping Form Input Fields -->
+      <div class="checkout-step-container active" id="step1View">
+        <div class="form-group"><label>Full Name</label><input type="text" id="chkName" value="Alex Professional Dev"></div>
+        <div class="form-group"><label>Address Line 1</label><input type="text" id="chkAddress" value="100 Web Framework Blvd"></div>
+        <div class="form-group"><label>City</label><input type="text" id="chkCity" value="San Francisco"></div>
+        <button class="btn-yellow" style="margin-top:15px;" onclick="transitionCheckoutStep(2)">Continue to Shipping Speeds</button>
+      </div>
+
+      <!-- STEP 2: Selection Speeds & Dynamic Value Modifiers -->
+      <div class="checkout-step-container" id="step2View">
+        <h3 style="font-size:15px; margin-bottom:12px;">Choose your shipping speed:</h3>
+        <div class="radio-card selected" id="shipCard0" onclick="selectShippingOption(0)">
+          <input type="radio" name="shipSpeed" id="radShip0" checked>
+          <div>
+            <strong>FREE Prime Delivery</strong>
+            <div style="font-size:12px; color:var(--text-muted);">Get it in 2 business days ($0.00)</div>
+          </div>
+        </div>
+        <div class="radio-card" id="shipCard1" onclick="selectShippingOption(1)">
+          <input type="radio" name="shipSpeed" id="radShip1">
+          <div>
+            <strong>Next-Day Overnight Delivery</strong>
+            <div style="font-size:12px; color:var(--text-muted);">Get it tomorrow morning (+$9.99)</div>
+          </div>
+        </div>
+        <button class="btn-yellow" style="margin-top:15px;" onclick="transitionCheckoutStep(3)">Continue to Order Finalization</button>
+      </div>
+
+      <!-- STEP 3: Order Summary Calculations -->
+      <div class="checkout-step-container" id="step3View">
+        <h3 style="font-size:15px; margin-bottom:10px;">Review Order Logistics</h3>
+        <div style="background:#f7f8f8; padding:12px; border-radius:6px; font-size:13px; line-height:1.5; margin-bottom:15px;">
+          <strong>Shipping Destination:</strong> <span id="lblConfirmAddress"></span>
+        </div>
+        <h3 style="font-size:14px; margin-bottom:8px;">Cost Structure breakdown:</h3>
+        <div style="display:flex; flex-direction:column; gap:6px; font-size:14px; border-bottom:1px solid var(--border-color); padding-bottom:8px; margin-bottom:8px;">
+          <div style="display:flex; justify-content:space-between;"><span>Items Subtotal:</span><span id="calcSubtotal"></span></div>
+          <div style="display:flex; justify-content:space-between;"><span>Shipping & Handling:</span><span id="calcShipping"></span></div>
+          <div style="display:flex; justify-content:space-between;"><span>Estimated Regulatory Tax (8.5%):</span><span id="calcTax"></span></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:18px; font-weight:700; color:#b12704; margin-bottom:20px;">
+          <span>Order Grand Total:</span><span id="calcGrandTotal"></span>
+        </div>
+        <button class="btn-yellow" onclick="finalizeCheckoutTransactionProcess()">Place Your Order</button>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="amazon-toast" id="toastNotice">Added to Cart</div>
+
+  <!-- --- SCRIPT APPLICATION SYSTEM --- -->
+  <script>
+    const products = [
+      { id: 1, name: "Echo Dot (5th Gen) Smart Speaker", basePrice: 49.99, emojis: ["🔊", "⚪", "🔵"], variants: ["Standard Edition", "With Clock Display (+$10.00)"], variantPrices: [0, 10.00], rating: 4.7, reviews: "48,210" },
+      { id: 2, name: "Kindle Paperwhite (16GB E-Reader)", basePrice: 149.99, emojis: ["📚", "🖤", "💚"], variants: ["16 GB Base Storage", "32 GB High-Capacity Storage (+$30.00)"], variantPrices: [0, 30.00], rating: 4.8, reviews: "12,943" },
+      { id: 3, name: "Fire TV Stick 4K Max Streaming Stick", basePrice: 59.99, emojis: ["🕹️", "📺"], variants: ["Standard Fire-OS Stick"], variantPrices: [0], rating: 4.6, reviews: "89,102" },
+      { id: 4, name: "Liquid I.V. Hydration Multiplier Pack", basePrice: 24.45, emojis: ["🥤", "🍋", "🍓"], variants: ["Lemon Lime Citrus Flavor", "Fresh Strawberry Blend (+ $2.00)"], variantPrices: [0, 2.00], rating: 4.5, reviews: "5,340" }
+    ];
+
+    // Core Repositories State Arrays
+    let cart = JSON.parse(localStorage.getItem('mega_amazon_cart')) || [];
+    let savedForLater = JSON.parse(localStorage.getItem('mega_amazon_saved')) || [];
+    
+    // Auxiliary System References
+    let activeItemObj = null;
+    let selImgIdx = 0, selVarIdx = 0, selQty = 1;
+    let selectedShippingCost = 0.00;
+
+    function renderCatalog(items = products) {
+      const target = document.getElementById('catalogView');
+      target.innerHTML = items.map(p => `
+        <div class="amazon-card" onclick="openProductDetailSheet(${p.id})">
+          <div>
+            <div class="product-image-frame">${p.emojis[0]}</div>
+            <div class="product-title">${p.name}</div>
+            <div class="rating-row">
+              <span class="stars">★ ${p.rating}</span>
+              <span class="review-count">(${p.reviews})</span>
+            </div>
+          </div>
+          <div>
+            <div style="font-size:18px; font-weight:700;">$${p.basePrice.toFixed(2)}</div>
+            <div class="prime-tag">✓ prime</div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    /* --- LIVE SUGGESTIONS ENGINE --- */
+    function handleSearchSearchSuggestions() {
+      const query = document.getElementById('productSearch').value.toLowerCase();
+      const suggestionsBox = document.getElementById('suggestionsBox');
+      
+      if (!query) { suggestionsBox.style.display = 'none'; renderCatalog(products); return; }
+      
+      const filtered = products.filter(p => p.name.toLowerCase().includes(query));
+      renderCatalog(filtered);
+
+      if (filtered.length === 0) {
+        suggestionsBox.style.display = 'none';
+      } else {
+        suggestionsBox.innerHTML = filtered.map(p => `
+          <div class="suggestion-item" onclick="applySuggestionSearch('${p.name}')">🔍 ${p.name}</div>
+        `).join('');
+        suggestionsBox.style.display = 'block';
+      }
+    }
+
+    function applySuggestionSearch(name) {
+      document.getElementById('productSearch').value = name;
+      document.getElementById('suggestionsBox').style.display = 'none';
+      renderCatalog(products.filter(p => p.name.toLowerCase().includes(name.toLowerCase())));
+    }
+
+    /* --- SPECIFICATION SHEET MODALS --- */
+    function openProductDetailSheet(productId) {
+      activeItemObj = products.find(p => p.id === productId);
+      selImgIdx = 0; selVarIdx = 0; selQty = 1;
+      document.getElementById('globalOverlay').classList.add('show');
+      document.getElementById('productDetailSheet').classList.add('open');
+      refreshDetailSheetView();
+    }
+
+    function dismissBottomSheet() {
+      document.getElementById('globalOverlay').classList.remove('show');
+      document.getElementById('productDetailSheet').classList.remove('open');
+    }
+
+    function refreshDetailSheetView() {
+      const p = activeItemObj;
+      const runningPrice = p.basePrice + p.variantPrices[selVarIdx];
+      
+      document.getElementById('sheetDetailBody').innerHTML = `
+        <div style="font-size:15px; font-weight:500; color:var(--text-main);">${p.name}</div>
+        
+        <div class="carousel-container">
+          <div class="main-carousel-view">${p.emojis[selImgIdx]}</div>
+          <div class="carousel-thumbnails">
+            ${p.emojis.map((em, i) => `<button class="thumbnail-btn ${i===selImgIdx?'active':''}" onclick="selImgIdx=${i}; refreshDetailSheetView();">${em}</button>`).join('')}
+          </div>
+        </div>
+
+        <div style="font-size:26px; font-weight:700; color:#111;">$${runningPrice.toFixed(2)}</div>
+        <div class="prime-tag" style="margin-bottom:10px;">✓ prime Choice</div>
+
+        <div style="font-weight:700; font-size:13px; margin-top:10px;">Options Flavor/Storage:</div>
+        <div class="variant-grid">
+          ${p.variants.map((v, i) => `<button class="variant-pill ${i===selVarIdx?'active':''}" onclick="selVarIdx=${i}; refreshDetailSheetView();">${v}</button>`).join('')}
+        </div>
+
+        <div style="font-weight:700; font-size:13px; margin:15px 0 6px;">Quantity Selector:</div>
+        <div class="qty-stepper">
+          <button class="qty-btn" onclick="if(selQty>1){selQty--; refreshDetailSheetView();}">-</button>
+          <div class="qty-value">${selQty}</div>
+          <button class="qty-btn" onclick="selQty++; refreshDetailSheetView();">+</button>
+        </div>
+
+        <button class="btn-yellow" style="margin-top:20px; padding:14px; border-radius:24px;" onclick="addSheetItemToCart()">Add to Shopping Cart</button>
+      `;
+    }
+
+    /* --- CART STATE ENGINE RULES --- */
+    function addSheetItemToCart() {
+      const p = activeItemObj;
+      const computedUnitCost = p.basePrice + p.variantPrices[selVarIdx];
+      const descriptorToken = `${p.name} (${p.variants[selVarIdx]})`;
+      const structuralEmojiGraphic = p.emojis[selImgIdx];
+
+      const matchedIdx = cart.findIndex(c => c.fullName === descriptorToken && c.emoji === structuralEmojiGraphic);
+      if(matchedIdx > -1) {
+        cart[matchedIdx].qty += selQty;
+      } else {
+        cart.push({ fullName: descriptorToken, unitPrice: computedUnitCost, emoji: structuralEmojiGraphic, qty: selQty });
+      }
+      dismissBottomSheet();
+      updateGlobalAppState();
+      displayToastAlert("Added to Shopping Cart");
+    }
+
+    function moveItemToSavedShelf(idx) {
+      const displacedItem = cart.splice(idx, 1)[0];
+      savedForLater.push(displacedItem);
+      updateGlobalAppState();
+      displayToastAlert("Moved to Saved for Later");
+    }
+
+    function restoreSavedItemToCart(idx) {
+      const restoredItem = savedForLater.splice(idx, 1)[0];
+      cart.push(restoredItem);
+      updateGlobalAppState();
+      displayToastAlert("Restored back to active Cart");
+    }
+
+    function purgeCartRow(idx) { cart.splice(idx, 1); updateGlobalAppState(); }
+    function purgeSavedRow(idx) { savedForLater.splice(idx, 1); updateGlobalAppState(); }
+
+    function openCartPanel() { document.getElementById('cartSlidingPanel').classList.add('open'); }
+    function closeCartPanel() { document.getElementById('cartSlidingPanel').classList.remove('open'); }
+    function closeAllPanels() { closeCartPanel(); closeCheckoutFunnel(); }
+
+    function displayToastAlert(msg) {
+      const t = document.getElementById('toastNotice'); t.innerText = msg;
+      t.classList.add('visible'); setTimeout(() => t.classList.remove('visible'), 2000);
+    }
+
+    function updateGlobalAppState() {
+      localStorage.setItem('mega_amazon_cart', JSON.stringify(cart));
+      localStorage.setItem('mega_amazon_saved', JSON.stringify(savedForLater));
+
+      const overallActiveItemsSumCount = cart.reduce((s, i) => s + i.qty, 0);
+      document.getElementById('bottomCartCount').innerText = overallActiveItemsSumCount;
+      document.getElementById('summaryCountItems').innerText = overallActiveItemsSumCount;
+      document.getElementById('checkoutBtnMain').disabled = cart.length === 0;
+
+      // Active Cart Rendering Engine Matrix
+      const activeContainer = document.getElementById('cartItemsContainer');
+      if(cart.length === 0) {
+        activeContainer.innerHTML = `<div style="text-align:center; padding:30px; color:var(--text-muted);">Your Cart is empty.</div>`;
+      } else {
+        activeContainer.innerHTML = cart.map((c, i) => `
+          <div class="cart-item-card">
+            <div class="cart-flex">
+              <div style="font-size:35px; background:#f7f8f8; padding:8px; border-radius:4px; height:60px; display:flex; align-items:center;">${c.emoji}</div>
+              <div style="flex:1;">
+                <div style="font-size:13px; font-weight:600; line-height:1.3;">${c.fullName}</div>
+                <div style="font-weight:700; margin-top:4px;">$${(c.unitPrice * c.qty).toFixed(2)} <span style="font-size:11px; font-weight:normal; color:var(--text-muted);">($${c.unitPrice.toFixed(2)} each)</span></div>
+                <div style="font-size:12px; margin-top:4px; color:var(--text-muted);">Quantity count: <strong>${c.qty}</strong></div>
+              </div>
+            </div>
+            <div class="action-links">
+              <button onclick="purgeCartRow(${i})">Delete</button>
+              <button onclick="moveItemToSavedShelf(${i})">Save for Later</button>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      // Saved Shelf Render Engine Framework
+      const savedContainer = document.getElementById('savedItemsContainer');
+      if(savedForLater.length === 0) {
+        savedContainer.innerHTML = `<div style="font-size:12px; color:var(--text-muted); font-style:italic;">No items saved inside this queue ledger segment.</div>`;
+      } else {
+        savedContainer.innerHTML = savedForLater.map((s, i) => `
+          <div class="cart-item-card" style="background:#fcfcfc; border-style:dashed;">
+            <div class="cart-flex">
+              <div style="font-size:30px;">${s.emoji}</div>
+              <div style="flex:1;">
+                <div style="font-size:12px; font-weight:500;">${s.fullName}</div>
+                <button class="btn-yellow" style="font-size:11px; padding:4px 8px; width:auto; margin-top:6px; border-radius:4px;" onclick="restoreSavedItemToCart(${i})">Move to Cart</button>
+                <button style="color:#b12704; font-size:11px; margin-left:15px; border:none; background:none;" onclick="purgeSavedRow(${i})">Delete</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      }
+
+      const activeCartSubtotalSumValue = cart.reduce((s, i) => s + (i.unitPrice * i.qty), 0);
+      document.getElementById('summaryTotalCost').innerText = `$${activeCartSubtotalSumValue.toFixed(2)}`;
+    }
+
+    /* --- CHECKOUT UTILITY FUNNEL PROCEDURES --- */
+    function launchCheckoutFunnel() {
+      document.getElementById('checkoutSystemPanel').classList.add('open');
+      transitionCheckoutStep(1);
+    }
+    function closeCheckoutFunnel() { document.getElementById('checkoutSystemPanel').classList.remove('open'); }
+
+    function transitionCheckoutStep(stepNumber) {
+      document.querySelectorAll('.checkout-step-container').forEach(v => v.classList.remove('active'));
+      document.querySelectorAll('.step-indicator span').forEach(s => s.classList.remove('active'));
+      
+      document.getElementById(`step${stepNumber}View`).classList.add('active');
+      document.getElementById(`indStep${stepNumber}`).classList.add('active');
+
+      if(stepNumber === 3) {
+        executeCheckoutMathematicalMatrixSummaryMetrics();
+      }
+    }
+
+    function selectShippingOption(optionIndex) {
+      selectedShippingCost = optionIndex === 0 ? 0.00 : 9.99;
+      document.querySelectorAll('.radio-card').forEach((c, idx) => {
+        c.classList.toggle('selected', idx === optionIndex);
+        document.getElementById(`radShip${idx}`).checked = (idx === optionIndex);
+      });
+    }
+
+    function executeCheckoutMathematicalMatrixSummaryMetrics() {
+      const itemsSubtotalVal = cart.reduce((s, i) => s + (i.unitPrice * i.qty), 0);
+      const computedTaxesVal = itemsSubtotalVal * 0.085;
+      const combinedTotalAggregateVal = itemsSubtotalVal + selectedShippingCost + computedTaxesVal;
+
+      document.getElementById('lblConfirmAddress').innerText = `${document.getElementById('chkName').value}, ${document.getElementById('chkAddress').value}, ${document.getElementById('chkCity').value}`;
+      document.getElementById('calcSubtotal').innerText = `$${itemsSubtotalVal.toFixed(2)}`;
+      document.getElementById('calcShipping').innerText = `$${selectedShippingCost.toFixed(2)}`;
+      document.getElementById('calcTax').innerText = `$${computedTaxesVal.toFixed(2)}`;
+      document.getElementById('calcGrandTotal').innerText = `$${combinedTotalAggregateVal.toFixed(2)}`;
+    }
+
+    function finalizeCheckoutTransactionProcess() {
+      alert("🎉 Success! Your production order mock sequence trace has completed execution flawlessly.");
+      cart = [];
+      updateGlobalAppState();
+      closeAllPanels();
+    }
+
+    window.onload = () => { renderCatalog(); updateGlobalAppState(); };
+  </script>
+</body>
+</html>
