@@ -1,0 +1,12 @@
+{
+  "name": "boutique-storefront",
+  "version": "1.0.0",
+  "description": "Premium E-Commerce Storefront with Persistent Cart Management",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  }
+}
